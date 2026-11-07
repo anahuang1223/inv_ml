@@ -31,14 +31,14 @@ def add_features(df):
     df["month"] = df["week_start"].dt.month
     return df
 
-
+# Get weekly demand, lag/rolling features, and train/test boolean labels
 def build_features():
     df = fill_missing_weeks(sql_analysis.weekly_demand())
     split = load_data.test_start(df["week_start"])
-
+    
     # The final week stops on a Friday, so its total would look like a demand drop
     df = df[df["week_start"] < df["week_start"].max()]
-
+    # NaN rows, first 4 weeks (not enough data for rolling features)
     df = add_features(df).dropna().reset_index(drop=True)
     df["is_test"] = df["week_start"] >= split
     return df
