@@ -15,3 +15,6 @@ horizon_weeks = 1
 
 # Hold out the last 12 weeks to test on
 test_weeks = 12
+
+# Product groups by demand pattern
+n_clusters = 3
