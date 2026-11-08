@@ -26,6 +26,9 @@ def add_features(df):
     df["lag_4"] = past.groupby(df["stock_code"]).shift(3)
     df["rolling_mean_4"] = past.groupby(df["stock_code"]).transform(lambda s: s.rolling(4).mean())
     df["rolling_std_4"] = past.groupby(df["stock_code"]).transform(lambda s: s.rolling(4).std())
+    df["rolling_median_4"] = past.groupby(df["stock_code"]).transform(lambda s: s.rolling(4).median())
+    # Same week last year, so the model can see seasonal peaks like Christmas
+    df["lag_52"] = past.groupby(df["stock_code"]).shift(52 - config.horizon_weeks)
 
     df["week_of_year"] = df["week_start"].dt.isocalendar().week.astype(int)
     df["month"] = df["week_start"].dt.month

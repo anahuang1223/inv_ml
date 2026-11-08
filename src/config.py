@@ -3,7 +3,7 @@ from pathlib import Path
 # File locations
 root = Path(__file__).resolve().parent.parent
 data_dir = root / "data"
-raw_xlsx = data_dir / "Online Retail.xlsx"
+raw_xlsx = data_dir / "online_retail_II.xlsx"
 db_path = data_dir / "inventory.db"
 model_dir = root / "models"
 

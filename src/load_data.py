@@ -7,18 +7,22 @@ from src import config
 
 def load_raw():
     # Read codes as text so values like "85123A" and leading zeros stay intact
-    return pd.read_excel(config.raw_xlsx, dtype={"InvoiceNo": str, "StockCode": str})
+    sheets = pd.read_excel(config.raw_xlsx, sheet_name=None, dtype={"Invoice": str, "StockCode": str})
+    first, second = sheets.values()
+    # Both sheets contain 1-9 Dec 2010; keep those days from the second sheet only
+    first = first[first["InvoiceDate"] < second["InvoiceDate"].min()]
+    return pd.concat([first, second], ignore_index=True)
 
 
 def clean(df):
     df = df.rename(columns={
-        "InvoiceNo": "invoice_no",
+        "Invoice": "invoice_no",
         "StockCode": "stock_code",
         "Description": "description",
         "Quantity": "quantity",
         "InvoiceDate": "invoice_date",
-        "UnitPrice": "unit_price",
-        "CustomerID": "customer_id",
+        "Price": "unit_price",
+        "Customer ID": "customer_id",
         "Country": "country",
     })
 
