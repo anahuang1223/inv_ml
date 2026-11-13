@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src import config, load_data, sql_analysis
+from src import load_data, sql_analysis
 
 
 def fill_missing_weeks(df):
@@ -15,10 +15,11 @@ def fill_missing_weeks(df):
     return df.reset_index()
 
 
-def add_features(df):
+def add_features(df, window):
     df = df.sort_values(["stock_code", "week_start"])
-    # Shifting by the horizon means every feature was known when forecasting
-    past = df.groupby("stock_code")["units"].shift(config.horizon_weeks)
+    weekly = df.groupby("stock_code")["units"]
+    # Shifting by one week means every feature was known when forecasting
+    past = weekly.shift(1)
 
     df["lag_1"] = past
     df["lag_2"] = past.groupby(df["stock_code"]).shift(1)
@@ -27,22 +28,32 @@ def add_features(df):
     df["rolling_mean_4"] = past.groupby(df["stock_code"]).transform(lambda s: s.rolling(4).mean())
     df["rolling_std_4"] = past.groupby(df["stock_code"]).transform(lambda s: s.rolling(4).std())
     df["rolling_median_4"] = past.groupby(df["stock_code"]).transform(lambda s: s.rolling(4).median())
-    # Same week last year, so the model can see seasonal peaks like Christmas
-    df["lag_52"] = past.groupby(df["stock_code"]).shift(52 - config.horizon_weeks)
+
+    # Target = total demand starting this week and spanning `window` weeks.
+    # window=1: current week; window=4: current week + next 3 weeks.
+    # Predict the full lead-time demand directly.
+    # Summing weekly q95 forecasts does NOT generally give the q95 of the total.
+    target = sum(weekly.shift(-k) for k in range(window))
+    df["units"] = target
+    # Same weeks last year, so the model can see seasonal peaks like Christmas
+    df["lag_52"] = target.groupby(df["stock_code"]).shift(52)
 
     df["week_of_year"] = df["week_start"].dt.isocalendar().week.astype(int)
     df["month"] = df["week_start"].dt.month
     return df
 
+
 # Get weekly demand, lag/rolling features, and train/test boolean labels
-def build_features():
+def build_features(window=1):
     df = fill_missing_weeks(sql_analysis.weekly_demand())
     split = load_data.test_start(df["week_start"])
-    
+
     # The final week stops on a Friday, so its total would look like a demand drop
     df = df[df["week_start"] < df["week_start"].max()]
-    # NaN rows, first 4 weeks (not enough data for rolling features)
-    df = add_features(df).dropna().reset_index(drop=True)
+    # Remove rows with missing features/targets:
+    # first 52 weeks (lag_52 unavailable) and last window-1 weeks
+    # (incomplete forecast targets).
+    df = add_features(df, window).dropna().reset_index(drop=True)
     df["is_test"] = df["week_start"] >= split
     return df
 
