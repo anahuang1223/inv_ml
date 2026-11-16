@@ -2,6 +2,8 @@
 
 Forecasts weekly demand for a UK online gift wholesaler and turns the forecasts into reorder decisions, then simulates those decisions to see what they would have cost.
 
+**Live dashboard:** [ml-inventory-forecasting.streamlit.app](https://ml-inventory-forecasting.streamlit.app)
+
 **Result:** on the 12 held-out test weeks, ordering up to the 95th-percentile demand forecast met **93.9%** of demand straight from the shelf, against **78.5%** for the textbook safety-stock formula, at **69% lower total cost**. It had the lowest cost under every shortage-cost assumption tested.
 
 ## Data
