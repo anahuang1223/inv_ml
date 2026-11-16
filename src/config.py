@@ -5,6 +5,8 @@ root = Path(__file__).resolve().parent.parent
 data_dir = root / "data"
 raw_xlsx = data_dir / "online_retail_II.xlsx"
 db_path = data_dir / "inventory.db"
+# Small copy with only what the dashboard reads, committed so the app can be deployed
+dashboard_db_path = data_dir / "dashboard.db"
 model_dir = root / "models"
 
 # How many top-selling products to work with (project scope: 50-100)

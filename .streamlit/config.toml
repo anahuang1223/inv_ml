@@ -1,0 +1,3 @@
+[theme]
+# The cream series color only stands out on a dark background
+base = "dark"

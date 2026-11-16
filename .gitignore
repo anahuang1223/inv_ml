@@ -2,6 +2,7 @@ __pycache__/
 .venv/
 data/*
 !data/.gitkeep
+!data/dashboard.db
 models/*
 !models/.gitkeep
 .DS_Store
