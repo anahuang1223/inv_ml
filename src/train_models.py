@@ -78,11 +78,16 @@ def forecast_weeks(model, df, weeks, window):
     return preds[df["week_start"].isin(weeks)], fitted
 
 
-def tune(name, df, window):
-    # Rolling validation on the last training weeks; the test weeks are never used
-    model, grid = candidates[name]
+def tuning_data(df, window):
+    # Last training weeks used for tuning; the test weeks are never used
     train = known_before(df, df.loc[df["is_test"], "week_start"].min(), window)
     weeks = sorted(train["week_start"].unique())[-config.validation_weeks:]
+    return train, weeks
+
+
+def tune(name, df, window):
+    model, grid = candidates[name]
+    train, weeks = tuning_data(df, window)
     # Actual demand for validation weeks
     actual = train.loc[train["week_start"].isin(weeks), "units"]
 
@@ -99,17 +104,24 @@ def tune(name, df, window):
 
 
 def run_window(window, clusters):
-    # window=1 predicts one week's demand; window=4 predicts a 4-week total.
+    # window=1 predicts one week's demand; window=5 predicts a 5-week total.
     df = build_features.build_features(window)
-    test = df[df["is_test"]]
-    weeks = sorted(test["week_start"].unique())
-
-    forecasts = test[["stock_code", "week_start", "units"]].assign(window=window)
+    # Forecast from the first tuning week, not just the test weeks, so the
+    # inventory simulation can warm up before the test period. The tuning weeks
+    # helped pick settings, so scores below use the test weeks only.
+    # tuning_data() returns (train, weeks): [0] = training DataFrame, [1] = validation weeks.
+    rows = df[df["week_start"] >= tuning_data(df, window)[1][0]]
+    # Tune on validation weeks, then forecast validation and test weeks.
+    weeks = sorted(rows["week_start"].unique())
+    # Add window and period columns; labels True as "test", False as "validation".
+    forecasts = rows[["stock_code", "week_start", "units"]].assign(
+        window=window, period=np.where(rows["is_test"], "test", "validation")
+    )
     # Simple baselines: any model has to beat these to be worth using.
     # Convert historical weekly sales into window-week totals.
-    forecasts["naive"] = test["lag_1"] * window
-    forecasts["rolling_mean_4"] = test["rolling_mean_4"] * window
-    forecasts["rolling_median_4"] = test["rolling_median_4"] * window
+    forecasts["naive"] = rows["lag_1"] * window
+    forecasts["rolling_mean_4"] = rows["rolling_mean_4"] * window
+    forecasts["rolling_median_4"] = rows["rolling_median_4"] * window
 
     cv_results = []
     best_params = {}
@@ -129,20 +141,22 @@ def run_window(window, clusters):
         # Dynamic column names: q=0.9 -> "q90"; q=0.95 -> "q95".
         forecasts[f"q{round(q * 100)}"], _ = forecast_weeks(model, df, weeks, window)
 
-    model_names = ["naive", "rolling_mean_4", "rolling_median_4", *candidates]
-    # **score unpacks MAE, RMSE, WAPE, and bias into each result row.
-    scores = pd.DataFrame(
-        [{"window": window, "model": name, **score(forecasts["units"], forecasts[name])}
-         for name in model_names]
-    ).sort_values("mae")
-
     # Join each forecast row with its product's cluster using stock_code,
     # so quantile accuracy can be checked separately for each cluster.
     forecasts = forecasts.merge(clusters, on="stock_code")
+    test = forecasts[forecasts["period"] == "test"]
+
+    model_names = ["naive", "rolling_mean_4", "rolling_median_4", *candidates]
+    # **score unpacks MAE, RMSE, WAPE, and bias into each result row(only the test weeks).
+    scores = pd.DataFrame(
+        [{"window": window, "model": name, **score(test["units"], test[name])}
+         for name in model_names]
+    ).sort_values("mae")
+
     # Evaluate quantiles across all products and separately by cluster.
     # groupby() yields (cluster_number, cluster_dataframe) pairs.
-    groups = [("all", forecasts)] + [
-        (f"cluster {c}", g) for c, g in forecasts.groupby("cluster")
+    groups = [("all", test)] + [
+        (f"cluster {c}", g) for c, g in test.groupby("cluster")
     ]
     quantile_scores = pd.DataFrame([{
         "window": window,
@@ -169,9 +183,8 @@ def save_results(tables):
 
 def main():
     clusters = sql_analysis.run_query("SELECT stock_code, cluster FROM product_clusters")
-    # Weekly forecasts for accuracy, and lead-time totals for reorder points
-    # Run the full experiment for both 1-week and 4-week demand.
-    results = [run_window(w, clusters) for w in (1, config.lead_time_weeks)]
+    # Weekly forecasts for accuracy, and lead time + review week totals for reordering
+    results = [run_window(w, clusters) for w in (1, config.lead_time_weeks + config.review_weeks)]
     forecasts, scores, quantile_scores, cv_scores = (pd.concat(t, ignore_index=True) for t in zip(*results))
     save_results({
         "forecasts": forecasts,
